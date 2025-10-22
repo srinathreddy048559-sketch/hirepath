@@ -1,13 +1,13 @@
+// Prisma + Neon
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")        // pooled
+  directUrl = env("DIRECT_URL")         // optional: non-pooled
+}
+
 generator client {
   provider = "prisma-client-js"
 }
-
-datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")   // pooled (pooler URL)
-  directUrl = env("DIRECT_URL")     // direct (non-pooler URL)
-}
-
 
 model TailoredRun {
   id        String   @id @default(cuid())
