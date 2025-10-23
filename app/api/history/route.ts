@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import prisma from "@/lib/prisma";     // 👈 make sure this looks exactly like this
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,6 @@ export async function GET() {
         createdAt: true
       }
     });
-
     return NextResponse.json(items, { status: 200 });
   } catch (err) {
     console.error("GET /api/history error:", err);

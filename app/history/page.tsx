@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 
 type HistoryItem = {
@@ -14,100 +15,145 @@ export default function HistoryPage() {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  async function load() {
-    setErr(null); setLoading(true);
+  const fetchHistory = async () => {
+    setErr(null);
+    setLoading(true);
     try {
-      const res = await fetch("/api/history", { cache: "no-store" });
+      const res = await fetch("/api/history");
       if (!res.ok) throw new Error("Failed to load history");
-      setItems(await res.json());
+      const data: HistoryItem[] = await res.json();
+      setItems(data);
     } catch (e: any) {
       setErr(e.message ?? "Failed to load history");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function remove(id: string) {
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const onDelete = async (id: string) => {
     setDeletingId(id);
     try {
       const res = await fetch(`/api/history/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
-      setItems(prev => prev.filter(i => i.id !== id));
+      setItems((prev) => prev.filter((x) => x.id !== id));
+    } catch (e) {
+      alert("Delete failed");
     } finally {
       setDeletingId(null);
     }
-  }
+  };
 
-  async function clearAll() {
+  const onClear = async () => {
     if (!confirm("Delete ALL runs?")) return;
     setClearing(true);
     try {
-      const res = await fetch("/api/history", { method: "DELETE" });
-      if (!res.ok) throw new Error("Clear failed");
+      // naive: delete one by one
+      for (const it of items) {
+        await fetch(`/api/history/${it.id}`, { method: "DELETE" });
+      }
       setItems([]);
+    } catch {
+      // ignore
     } finally {
       setClearing(false);
     }
-  }
-
-  useEffect(() => { load(); }, []);
+  };
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-5xl bg-white rounded-2xl shadow p-6">
+    <main className="min-h-screen bg-gray-50 flex flex-col items-center p-6">
+      <div className="w-full max-w-4xl bg-white p-6 rounded-2xl shadow-md">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold">Previous Runs</h1>
-          <div className="space-x-2">
-            <a href="/" className="text-sm text-blue-600 hover:underline">← Back to Generate</a>
+          <h1 className="text-2xl font-bold text-blue-700">Previous Runs</h1>
+          <div className="flex items-center gap-3">
+            <a
+              href="/"
+              className="px-4 py-2 rounded-lg border text-blue-700 border-blue-200 hover:bg-blue-50"
+            >
+              ← Back to Generate
+            </a>
             <button
-              onClick={clearAll}
               disabled={clearing || items.length === 0}
-              className="px-3 py-1.5 rounded bg-red-600 text-white disabled:opacity-50"
+              onClick={onClear}
+              className={`px-4 py-2 rounded-lg text-white ${
+                clearing || items.length === 0
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-red-600 hover:bg-red-700"
+              }`}
             >
               {clearing ? "Clearing..." : "Clear All"}
             </button>
           </div>
         </div>
 
-        {loading && <p className="text-gray-500">Loading…</p>}
-        {err && <p className="text-red-600">{err}</p>}
-        {!loading && items.length === 0 && <p className="text-gray-500">No records yet.</p>}
+        {loading && <p className="text-gray-500">Loading...</p>}
+        {err && <p className="text-red-500">Error: {err}</p>}
 
-        <ul className="divide-y">
+        {!loading && items.length === 0 && (
+          <p className="text-gray-500">No records yet.</p>
+        )}
+
+        <div className="mt-4 space-y-4">
           {items.map((it) => (
-            <li key={it.id} className="py-4">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 pr-4">
-                  <p className="font-semibold">{new Date(it.createdAt).toLocaleString()}</p>
-                  <p className="text-gray-600 truncate">
-                    <span className="font-medium">Summary:</span> {it.summary || "—"}
-                  </p>
+            <div
+              key={it.id}
+              className="border rounded-lg p-4 flex items-start justify-between gap-4"
+            >
+              <div className="flex-1">
+                <div className="text-sm text-gray-500 mb-1">
+                  {new Date(it.createdAt).toLocaleString()}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <details>
-                    <summary className="cursor-pointer px-3 py-1.5 rounded border">View</summary>
-                    <div className="mt-2 p-3 border rounded bg-gray-50 w-[70vw] max-w-3xl">
-                      <h3 className="font-semibold mb-1">Summary</h3>
-                      <pre className="whitespace-pre-wrap text-sm">{it.summary}</pre>
-                      <h3 className="font-semibold mt-3 mb-1">Message</h3>
-                      <pre className="whitespace-pre-wrap text-sm">{it.message}</pre>
-                    </div>
-                  </details>
-                  <button
-                    onClick={() => remove(it.id)}
-                    disabled={deletingId === it.id}
-                    className="px-3 py-1.5 rounded bg-red-600 text-white disabled:opacity-50"
-                  >
-                    {deletingId === it.id ? "Deleting…" : "Delete"}
-                  </button>
-                </div>
+                <details className="w-full">
+                  <summary className="cursor-pointer font-medium">
+                    Summary: {it.summary.slice(0, 120)}{it.summary.length > 120 ? "…" : ""}
+                  </summary>
+                  <div className="mt-3 p-3 bg-gray-50 rounded">
+                    <h3 className="font-semibold mb-1">Summary</h3>
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800">
+                      {it.summary}
+                    </pre>
+                    <h3 className="font-semibold mt-3 mb-1">Message</h3>
+                    <pre className="whitespace-pre-wrap text-sm text-gray-800">
+                      {it.message}
+                    </pre>
+                  </div>
+                </details>
               </div>
-            </li>
+
+              <div className="flex flex-col gap-2">
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const text = `Summary:\n${it.summary}\n\nMessage:\n${it.message}`;
+                    navigator.clipboard.writeText(text);
+                    alert("Copied summary + message");
+                  }}
+                  className="px-3 py-2 rounded border text-blue-700 border-blue-200 hover:bg-blue-50 text-sm"
+                >
+                  Copy
+                </a>
+                <button
+                  onClick={() => onDelete(it.id)}
+                  disabled={deletingId === it.id}
+                  className={`px-3 py-2 rounded text-white text-sm ${
+                    deletingId === it.id
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-red-600 hover:bg-red-700"
+                  }`}
+                >
+                  {deletingId === it.id ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       </div>
     </main>
   );
