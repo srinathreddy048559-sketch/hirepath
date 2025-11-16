@@ -1,17 +1,20 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-model TailoredRun {
+model History {
   id        String   @id @default(cuid())
-  resume    String
-  jd        String
-  summary   String
-  message   String
   createdAt DateTime @default(now())
+
+  title     String
+  jd        String
+  resume    String
+  tailored  String
 }

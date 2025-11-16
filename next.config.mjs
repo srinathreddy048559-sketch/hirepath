@@ -1,14 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-
-  // ✅ Ignore linting and type errors on Vercel build
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  // Let Next bundle pdf-parse as a server external package
+  serverExternalPackages: ["pdf-parse"],
 };
 
 export default nextConfig;

@@ -1,26 +1,20 @@
+// app/api/history/route.ts
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";     // 👈 make sure this looks exactly like this
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+import prisma from "@/lib/prisma";
 
 export async function GET() {
   try {
-    const items = await prisma.tailoredRun.findMany({
+    const items = await prisma.history.findMany({
       orderBy: { createdAt: "desc" },
       take: 50,
-      select: {
-        id: true,
-        resume: true,
-        jd: true,
-        summary: true,
-        message: true,
-        createdAt: true
-      }
     });
-    return NextResponse.json(items, { status: 200 });
+
+    return NextResponse.json({ ok: true, items });
   } catch (err) {
-    console.error("GET /api/history error:", err);
-    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+    console.error("history GET error", err);
+    return NextResponse.json(
+      { ok: false, error: "Failed to load history" },
+      { status: 500 }
+    );
   }
 }
