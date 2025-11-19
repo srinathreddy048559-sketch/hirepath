@@ -1,9 +1,9 @@
 // app/api/parse-resume/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
 import axios from "axios";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const file = form.get("file") as File | null;
@@ -15,44 +15,49 @@ export async function POST(req: Request) {
       );
     }
 
-    // Convert PDF → Buffer
+    // Convert File → Buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // --------------------------
-    // 1️⃣ TRY NORMAL PDF PARSING
-    // --------------------------
-    try {
-      const data = await pdfParse(buffer);
+    // --------------------------------
+    // 1️⃣ TRY STANDARD PDF PARSING
+    // --------------------------------
+   // 1️⃣ TRY STANDARD PDF PARSING
+try {
+  const parsed = await pdfParse(buffer);
 
-      if (data?.text?.trim().length > 20) {
-        // Parsed successfully with regular PDF parser
-        return NextResponse.json({ ok: true, text: data.text.trim() });
-      }
+  if (parsed?.text?.trim().length > 20) {
+    return NextResponse.json({
+      ok: true,
+      text: parsed.text.trim(),
+      method: "pdf-parse",
+    });
+  }
 
-      console.warn(
-        "PDF parse: too little extractable text, falling back to OCR..."
-      );
-    } catch (err) {
-      console.warn("PDF parse error, falling back to OCR...", err);
-    }
+  console.warn("pdf-parse returned too little text -> using OCR...");
+} catch (err: any) {
+  // 🔇 make the log smaller so dev console is not crazy
+  console.warn(
+    "pdf-parse failed, falling back to OCR. Reason:",
+    err?.message || String(err)
+  );
+}
 
-    // --------------------------
+
+    // --------------------------------
     // 2️⃣ OCR FALLBACK (OCR.space)
-    // --------------------------
+    // --------------------------------
     const apiKey = process.env.OCR_API_KEY;
 
     if (!apiKey) {
-      console.error("OCR_API_KEY missing from .env");
       return NextResponse.json(
-        { ok: false, error: "OCR API key missing" },
+        { ok: false, error: "OCR_API_KEY missing in .env" },
         { status: 500 }
       );
     }
 
-    console.log("Trying OCR with OCR.space…");
+    console.log("Running OCR via OCR.space…");
 
-    // OCR.space expects form/urlencoded or multipart, not JSON
     const params = new URLSearchParams();
     params.append("apikey", apiKey);
     params.append(
@@ -62,53 +67,46 @@ export async function POST(req: Request) {
     params.append("isOverlayRequired", "false");
     params.append("OCREngine", "2");
     params.append("scale", "true");
+    params.append("language", "eng");
 
     const ocrRes = await axios.post(
       "https://api.ocr.space/parse/image",
       params.toString(),
       {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        // Don't throw on non-2xx; let us inspect the body
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         validateStatus: () => true,
         maxBodyLength: Infinity,
       }
     );
 
-    console.log("OCR response status:", ocrRes.status);
-    console.log("OCR response data:", JSON.stringify(ocrRes.data, null, 2));
+    const error = ocrRes.data?.ErrorMessage?.[0];
+    const isError = ocrRes.data?.IsErroredOnProcessing;
 
-    // Basic success check according to OCR.space docs
-    const isErrored = ocrRes.data?.IsErroredOnProcessing;
-    const errorMessage =
-      ocrRes.data?.ErrorMessage?.[0] || ocrRes.data?.ErrorMessage;
-
-    if (isErrored) {
-      console.error("OCR.space reported error:", errorMessage);
+    if (isError) {
       return NextResponse.json(
-        { ok: false, error: `OCR error: ${errorMessage || "Unknown error"}` },
+        { ok: false, error: error || "OCR processing error" },
         { status: 500 }
       );
     }
 
-    const ocrText =
-      ocrRes.data?.ParsedResults?.[0]?.ParsedText?.toString() ?? "";
+    const ocrText = ocrRes.data?.ParsedResults?.[0]?.ParsedText || "";
 
-    if (!ocrText || ocrText.trim().length < 5) {
-      console.error("OCR succeeded but text was empty/too short");
+    if (!ocrText || ocrText.trim().length < 10) {
       return NextResponse.json(
-        { ok: false, error: "OCR failed to extract text" },
+        { ok: false, error: "OCR extracted too little text" },
         { status: 500 }
       );
     }
 
-    // ✅ Success via OCR fallback
-    return NextResponse.json({ ok: true, text: ocrText.trim() });
+    return NextResponse.json({
+      ok: true,
+      text: ocrText.trim(),
+      method: "ocr",
+    });
   } catch (err) {
-    console.error("Final parse-resume fatal:", err);
+    console.error("Fatal parse-resume error:", err);
     return NextResponse.json(
-      { ok: false, error: "Parsing failed" },
+      { ok: false, error: "Internal parsing error" },
       { status: 500 }
     );
   }

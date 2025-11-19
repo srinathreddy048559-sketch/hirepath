@@ -9,6 +9,18 @@ type Props = {
   filename?: string;   // e.g. "HirePath-Resume.pdf"
 };
 
+// 🔒 LOCKED HEADER (change these 3 lines only if you ever want a new fixed header)
+const LOCKED_NAME = "Srinath Reddy";
+const LOCKED_SUBTITLE =
+  "AI/ML Engineer | Generative AI | LLMs | RAG | MLOps";
+const LOCKED_CONTACT =
+  "Southlake, TX | +1 (860) 753-5887 | srinathreddy9508@gmail.com | github.com/srinathreddy";
+
+// Remove any non-ASCII so WinAnsi never crashes (emoji, •, fancy quotes, etc.)
+function sanitize(text: string): string {
+  return (text || "").replace(/[^\x00-\x7F]/g, "");
+}
+
 export default function PdfButton({ data, filename = "resume.pdf" }: Props) {
   async function handleDownload() {
     if (!data || !data.trim()) return;
@@ -46,10 +58,10 @@ export default function PdfButton({ data, filename = "resume.pdf" }: Props) {
     const { headerName, headerSubtitle, headerContact, bodyLines } =
       parseResumeStructure(data);
 
-    // ======= HEADER =======
+    // ======= HEADER (LOCKED) =======
     if (headerName) {
       const nameSize = 20;
-      page.drawText(headerName, {
+      page.drawText(sanitize(headerName), {
         x: margin,
         y,
         size: nameSize,
@@ -60,7 +72,7 @@ export default function PdfButton({ data, filename = "resume.pdf" }: Props) {
 
     if (headerSubtitle) {
       const subtitleSize = 11.5;
-      page.drawText(headerSubtitle, {
+      page.drawText(sanitize(headerSubtitle), {
         x: margin,
         y,
         size: subtitleSize,
@@ -71,7 +83,7 @@ export default function PdfButton({ data, filename = "resume.pdf" }: Props) {
 
     if (headerContact) {
       const contactSize = 9.5;
-      page.drawText(headerContact, {
+      page.drawText(sanitize(headerContact), {
         x: margin,
         y,
         size: contactSize,
@@ -106,36 +118,36 @@ export default function PdfButton({ data, filename = "resume.pdf" }: Props) {
       // Make sure we have some space
       ensureSpace(2);
 
-      // Section titles (SUMMARY, CORE SKILLS, ...)
-      // Section titles (SUMMARY, CORE SKILLS, ...)
-if (isSectionTitle(line)) {
-  y -= baseLineHeight * 0.4;
-  const titleSize = 11.5;
-  const wrapped = wrapText(boldFont, line, titleSize, maxWidth);
+      // -------- Section titles (SUMMARY, CORE SKILLS, ...) --------
+      if (isSectionTitle(line)) {
+        y -= baseLineHeight * 0.4;
+        const titleSize = 11.5;
+        const wrapped = wrapText(boldFont, line, titleSize, maxWidth);
 
-  for (const t of wrapped) {
-    ensureSpace(1);
-    page.drawText(t, {
-      x: margin,
-      y,
-      size: titleSize,
-      font: boldFont,
-    });
-    y -= titleSize + 3;
-  }
+        for (const t of wrapped) {
+          ensureSpace(1);
+          page.drawText(t, {
+            x: margin,
+            y,
+            size: titleSize,
+            font: boldFont,
+          });
+          y -= titleSize + 3;
+        }
 
-  // extra breathing room after section title (no underline)
-  y -= baseLineHeight * 0.3;
-  continue;
-}
+        // extra breathing room after section title (no underline)
+        y -= baseLineHeight * 0.3;
+        continue;
+      }
 
-
-      // Bullet lines
+      // -------- Bullet lines --------
       if (isBullet(line)) {
         const bulletIndent = 12;
         const textIndent = 20;
 
-        const stripped = line.replace(/^[-•●▪‣•]+/, "").trimStart();
+        const strippedRaw = line.replace(/^[-•●▪‣•]+/, "").trimStart();
+        const stripped = sanitize(strippedRaw);
+
         const bulletLines = wrapText(
           bodyFont,
           stripped,
@@ -145,7 +157,8 @@ if (isSectionTitle(line)) {
 
         // First bullet line
         ensureSpace(bulletLines.length + 1);
-        page.drawText("•", {
+        // Use "-" instead of "•" so it's ASCII-safe
+        page.drawText("-", {
           x: margin + bulletIndent,
           y,
           size: bodySize,
@@ -174,13 +187,13 @@ if (isSectionTitle(line)) {
         continue;
       }
 
-      // Lines that look like job titles / company + dates
+      // -------- Lines that look like job titles / company + dates --------
       if (looksLikeTitle(line)) {
         const parts = splitTitleAndDates(line);
         const titleSize = 11;
 
         ensureSpace(1);
-        page.drawText(parts.title, {
+        page.drawText(sanitize(parts.title), {
           x: margin,
           y,
           size: titleSize,
@@ -188,8 +201,9 @@ if (isSectionTitle(line)) {
         });
 
         if (parts.dates) {
-          const wDates = italicFont.widthOfTextAtSize(parts.dates, 9.5);
-          page.drawText(parts.dates, {
+          const datesClean = sanitize(parts.dates);
+          const wDates = italicFont.widthOfTextAtSize(datesClean, 9.5);
+          page.drawText(datesClean, {
             x: width - margin - wDates,
             y,
             size: 9.5,
@@ -201,7 +215,7 @@ if (isSectionTitle(line)) {
         continue;
       }
 
-      // Normal paragraph text
+      // -------- Normal paragraph text --------
       const paraLines = wrapText(bodyFont, line, bodySize, maxWidth);
       for (const pl of paraLines) {
         ensureSpace(1);
@@ -242,19 +256,23 @@ if (isSectionTitle(line)) {
 
 /* ===================== Helper functions ===================== */
 
+// 🔒 We IGNORE the AI header and always use the locked one above.
+// The AI text becomes bodyLines only.
 function parseResumeStructure(raw: string) {
   const normalized = raw.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n").map((l) => l.trimEnd());
 
-  // remove leading empties
+  // You can optionally strip any leading blank lines:
   while (lines.length && !lines[0].trim()) lines.shift();
 
-  const headerName = lines[0] ?? "";
-  const headerSubtitle = lines[1] ?? "";
-  const headerContact = lines[2] ?? "";
-  const bodyLines = lines.slice(3);
+  const bodyLines = lines; // entire AI output is treated as body
 
-  return { headerName, headerSubtitle, headerContact, bodyLines };
+  return {
+    headerName: LOCKED_NAME,
+    headerSubtitle: LOCKED_SUBTITLE,
+    headerContact: LOCKED_CONTACT,
+    bodyLines,
+  };
 }
 
 function isSectionTitle(line: string): boolean {
@@ -299,7 +317,11 @@ function splitTitleAndDates(line: string): { title: string; dates: string } {
   const right = match[3].trim();
 
   // if right side looks like dates (contains year or month)
-  if (/\b(20\d{2}|19\d{2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(right)) {
+  if (
+    /\b(20\d{2}|19\d{2}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(
+      right
+    )
+  ) {
     return { title: left, dates: right };
   }
 
@@ -312,7 +334,8 @@ function wrapText(
   fontSize: number,
   maxWidth: number
 ): string[] {
-  const words = text.split(/\s+/);
+  const cleanText = sanitize(text);
+  const words = cleanText.split(/\s+/);
   const lines: string[] = [];
   let current = "";
 
@@ -349,7 +372,6 @@ function drawFooter(
     y,
     size,
     font,
-    color: undefined,
   });
 
   const brand = "HirePath.ai";

@@ -1,30 +1,43 @@
 // app/api/history/[id]/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-export async function DELETE(req: Request) {
+// GET /api/history/:id
+export async function GET(_req: NextRequest, { params }: any) {
   try {
-    // URL will look like: /api/history/123
-    const url = new URL(req.url);
-    const segments = url.pathname.split("/");
-    const id = segments[segments.length - 1];
-
-    if (!id) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
       return NextResponse.json(
-        { ok: false, error: "Missing id in URL" },
-        { status: 400 }
+        { ok: false, error: "not_logged_in" },
+        { status: 401 }
       );
     }
 
-    await prisma.history.delete({
-      where: { id },
+    const id = params?.id as string;
+
+    const row = await prisma.history.findFirst({
+      where: {
+        id,
+        user: {
+          email: session.user.email,
+        },
+      },
     });
 
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error("history DELETE error", err);
+    if (!row) {
+      return NextResponse.json(
+        { ok: false, error: "not_found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, history: row });
+  } catch (e) {
+    console.error("[history][GET by id] error", e);
     return NextResponse.json(
-      { ok: false, error: "Failed to delete history item" },
+      { ok: false, error: "history_get_failed" },
       { status: 500 }
     );
   }

@@ -1,439 +1,699 @@
+// app/page.tsx
 "use client";
 
-import React, { useState, FormEvent } from "react";
-import PdfButton from "./components/pdf/PdfButton";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import AskHirePathBubble from "./components/ui/AskHirePathBubble";
+import AskHirePathChat from "./components/ui/AskHirePathChat";
+
+type JobType = "Full-time" | "Contract" | "Internship" | string;
+type WorkMode = "Onsite" | "Remote" | "Hybrid" | string;
+
+type Job = {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  jobType: JobType | null;
+  workMode: WorkMode | null;
+  salaryRange?: string | null;
+  description: string;
+  tags?: string | null;
+  createdAt: string; // ISO string from API
+};
+
+const TRENDING_CATEGORIES: { label: string; keyword: string }[] = [
+  { label: "AI & ML", keyword: "AI ML" },
+  { label: "Data Science", keyword: "Data Scientist" },
+  { label: "Backend & APIs", keyword: "Backend" },
+  { label: "Cloud & DevOps", keyword: "DevOps" },
+  { label: "Full-stack", keyword: "Full stack" },
+];
 
 export default function HomePage() {
-  const [resumeText, setResumeText] = useState("");
-  const [jdText, setJdText] = useState("");
-  const [generatedResume, setGeneratedResume] = useState("");
-  const [chatInput, setChatInput] = useState("");
-  const [chatLog, setChatLog] = useState<
-    { role: "user" | "assistant"; content: string }[]
-  >([]);
-  const [loadingResume, setLoadingResume] = useState(false);
-  const [loadingChat, setLoadingChat] = useState(false);
-  const [uploadingResume, setUploadingResume] = useState(false);
-  const [feedback, setFeedback] = useState("");
+  const router = useRouter();
 
-  // ---------- Upload handler ----------
-  async function handleResumePdfUpload(file: File) {
-    try {
-      setUploadingResume(true);
-      setFeedback("");
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
 
-      const formData = new FormData();
-      formData.append("file", file);
+  const [keyword, setKeyword] = useState("");
+  const [location, setLocation] = useState("");
+  const [jobTypeFilter, setJobTypeFilter] = useState<"Any" | JobType>("Any");
+  const [workModeFilter, setWorkModeFilter] =
+    useState<"Any" | WorkMode>("Any");
 
-      const res = await fetch("/api/parse-resume", {
-        method: "POST",
-        body: formData,
-      });
+  // 🔹 selected job for "View details"
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
-      const data = await res.json();
-
-      if (!data.ok) {
-        setResumeText("");
-        setFeedback(
-          data.error ??
-            "We couldn’t read this PDF. Try exporting again as PDF or paste the text manually."
-        );
-        return;
+  // 🔹 Load jobs from /api/jobs
+  useEffect(() => {
+    async function loadJobs() {
+      try {
+        setLoadingJobs(true);
+        const res = await fetch("/api/jobs");
+        if (!res.ok) throw new Error("Failed to load jobs");
+        const data = await res.json();
+        setJobs(data.jobs ?? []);
+      } catch (err) {
+        console.error("Jobs load error", err);
+      } finally {
+        setLoadingJobs(false);
       }
+    }
 
-      setResumeText(data.text);
-      setFeedback("");
-    } catch (err) {
-      console.error("upload error", err);
-      setFeedback(
-        "Unexpected error while reading your PDF. Please try again or paste your resume text."
+    loadJobs();
+  }, []);
+
+  // 🔹 Filter logic for search bar
+  const filteredJobs = useMemo(() => {
+    return jobs.filter((job) => {
+      const kw = keyword.toLowerCase();
+      const loc = location.toLowerCase();
+
+      const matchesKeyword =
+        !kw ||
+        job.title.toLowerCase().includes(kw) ||
+        (job.company ?? "").toLowerCase().includes(kw) ||
+        job.description.toLowerCase().includes(kw);
+
+      const matchesLocation =
+        !loc || (job.location ?? "").toLowerCase().includes(loc);
+
+      const matchesType =
+        jobTypeFilter === "Any" ||
+        (job.jobType ?? "").toLowerCase() === jobTypeFilter.toLowerCase();
+
+      const matchesMode =
+        workModeFilter === "Any" ||
+        (job.workMode ?? "").toLowerCase() === workModeFilter.toLowerCase();
+
+      return (
+        matchesKeyword && matchesLocation && matchesType && matchesMode
       );
-    } finally {
-      setUploadingResume(false);
-    }
+    });
+  }, [jobs, keyword, location, jobTypeFilter, workModeFilter]);
+
+  function formatDate(dateString: string) {
+    const d = new Date(dateString);
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
-  // ---------- Generate tailored resume ----------
-  async function handleGenerateResume(e: FormEvent) {
-    e.preventDefault();
-    if (!resumeText.trim() || !jdText.trim()) return;
-
-    setLoadingResume(true);
-    setGeneratedResume("");
-
-    try {
-      const res = await fetch("/api/generate-resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          resume: resumeText,
-          jd: jdText,
-        }),
-      });
-
-      if (!res.ok) {
-        console.error("generate-resume error", await res.text());
-        alert("Something went wrong tailoring the resume. Please try again.");
-        return;
-      }
-
-      const data = await res.json();
-      setGeneratedResume(data.resume || "");
-    } catch (err) {
-      console.error("generate-resume error", err);
-      alert("Something went wrong tailoring the resume. Please try again.");
-    } finally {
-      setLoadingResume(false);
-    }
+  function handleTailor(job: Job) {
+  if (typeof window !== "undefined") {
+    // save full job so /tailor can auto-fill JD + title
+    window.localStorage.setItem("hirepath-last-job", JSON.stringify(job));
   }
 
-  // ---------- Chatbot ----------
-  async function handleChatSubmit(e: FormEvent) {
-    e.preventDefault();
-    const question = chatInput.trim();
-    if (!question) return;
+  // we don’t need the id in the URL any more
+  router.push("/tailor");
+}
 
-    setChatInput("");
-    setLoadingChat(true);
-    setChatLog((prev) => [...prev, { role: "user", content: question }]);
 
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: chatLog.concat({ role: "user", content: question }),
-          resume: resumeText,
-          jd: jdText,
-          tailored: generatedResume,
-        }),
-      });
+  // 🔹 open / close details
+  function handleViewDetails(job: Job) {
+    setSelectedJob(job);
+  }
 
-      if (!res.ok) {
-        console.error("chat error", await res.text());
-        setChatLog((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "Sorry, something went wrong answering that question.",
-          },
-        ]);
-        return;
-      }
-
-      const data = await res.json();
-      setChatLog((prev) => [
-        ...prev,
-        { role: "assistant", content: data.reply || "" },
-      ]);
-    } catch (err) {
-      console.error("chat error", err);
-      setChatLog((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "Sorry, something went wrong. Please try asking again in a moment.",
-        },
-      ]);
-    } finally {
-      setLoadingChat(false);
-    }
+  function closeDetails() {
+    setSelectedJob(null);
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-50">
-      {/* Top hero / header */}
-      <header className="border-b border-slate-800/70 bg-slate-950/70 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500/20 text-cyan-400 text-sm font-bold">
-              HP
-            </div>
-            <div className="flex flex-col leading-tight">
-              <span className="text-sm font-semibold tracking-tight">
-                HirePath.ai
-              </span>
-              <span className="text-[11px] text-slate-400">
-                AI resume co-pilot for serious job seekers
-              </span>
-            </div>
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-slate-50">
+      {/* ---------- HERO (Job-first) ---------- */}
+<section className="relative">
+  {/* soft blue background bubble behind hero */}
+  <div className="pointer-events-none absolute inset-x-0 top-4 -bottom-6 -z-10 flex justify-center">
+    <div className="h-full w-full max-w-6xl rounded-[2.5rem] bg-gradient-to-br from-sky-100 via-sky-50 to-white" />
+  </div>
+
+  <div className="mx-auto grid max-w-6xl gap-10 px-4 pt-10 pb-8 md:grid-cols-[minmax(0,2.1fr)_minmax(0,3fr)] md:items-center">
+    {/* Left: avatar bubbles */}
+    <div className="relative flex h-full items-center justify-center md:justify-start">
+      <div className="pointer-events-none absolute inset-y-4 -left-6 -right-10 rounded-[2.5rem] bg-sky-900/5 blur-2xl" />
+
+      <div className="relative flex flex-col gap-6">
+        {/* Srinath bubble */}
+        <div className="flex items-center gap-3 rounded-3xl bg-white/95 p-3 shadow-sm shadow-sky-100 ring-1 ring-slate-100">
+          <div className="relative h-16 w-16 overflow-hidden rounded-full border border-sky-200 bg-sky-50 shadow-sm">
+            <Image
+              src="/avatars/srinath.png"
+              alt="Srinath from HirePath"
+              fill
+              className="object-cover"
+            />
           </div>
-          <span className="text-[11px] rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 font-medium text-emerald-300">
-            BETA – for feedback only
-          </span>
+
+          <div className="space-y-1.5">
+            <p className="text-sm font-semibold text-slate-900">
+              Srinath · AI/ML Engineer
+            </p>
+
+            <p className="text-xs leading-snug text-slate-500">
+              “HirePath helped me find better roles and tailor my resume in minutes.”
+            </p>
+
+            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-100">
+              <span className="mr-1 text-[13px]">✔</span>
+              Matched to GenAI roles
+            </span>
+          </div>
         </div>
-      </header>
 
-      {/* Body */}
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 pb-20">
-        {/* Hero text */}
-        <section className="rounded-3xl border border-slate-800/70 bg-gradient-to-r from-slate-900/80 via-slate-900/60 to-slate-900/20 p-6 md:p-8 shadow-[0_0_60px_rgba(15,23,42,0.7)]">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="max-w-xl space-y-2">
-              <p className="text-[11px] font-semibold tracking-[0.25em] text-slate-400 uppercase">
-                Confident resumes, faster
-              </p>
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-                Turn your <span className="text-cyan-400">resume + JD</span>{" "}
-                into a role-ready resume.
-              </h1>
-              <p className="text-sm text-slate-300">
-                Paste or upload your resume, drop in a job description, and
-                HirePath rewrites it to match the role while keeping your real
-                experience. No fake projects. You stay in control.
-              </p>
+        {/* Bubble 2 */}
+        <div className="ml-10 flex items-center gap-3 rounded-3xl bg-white/95 p-3 shadow-sm shadow-sky-100">
+          <div className="relative h-14 w-14 overflow-hidden rounded-full border border-sky-100 bg-sky-50">
+            <Image
+              src="/avatars/dev1.png"
+              alt="Full-stack developer avatar"
+              fill
+              className="object-cover"
+            />
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-slate-900">
+              Full-stack dev · Remote
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Found remote roles + ATS-safe resume in one place.
+            </p>
+          </div>
+        </div>
+
+        {/* Bubble 3 */}
+        <div className="ml-4 flex items-center gap-3 rounded-3xl bg-white/95 p-3 shadow-sm shadow-sky-100">
+          <div className="relative h-12 w-12 overflow-hidden rounded-full border border-sky-100 bg-sky-50">
+            <Image
+              src="/avatars/dev2.png"
+              alt="Data scientist avatar"
+              fill
+              className="object-cover"
+            />
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-xs font-semibold text-slate-900">
+              Data Scientist · Seattle
+            </p>
+            <p className="text-[11px] text-slate-500">
+              “Every JD → one perfect resume.”
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Right: heading + job search bar */}
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-600">
+          AI-POWERED JOB SEARCH
+        </p>
+
+        <h1 className="text-[2.1rem] font-black leading-tight text-slate-900 md:text-[2.6rem]">
+          Find your next{" "}
+          <span className="bg-gradient-to-r from-sky-600 via-sky-500 to-indigo-500 bg-clip-text text-transparent">
+            tech job
+          </span>
+          .
+        </h1>
+
+        <p className="mt-2 text-lg font-medium text-sky-700">
+          Search roles you want. Let AI fix the resume later.
+        </p>
+
+        <p className="mt-1 max-w-xl text-sm text-slate-600">
+          Browse curated tech jobs by keyword, location, and work mode. HirePath
+          surfaces the best matches for your profile and can generate a tailored,
+          ATS-ready resume when you’re ready to apply.
+        </p>
+      </div>
+
+      {/* Search panel */}
+      <div className="rounded-[1.6rem] bg-white/95 p-4 shadow-md shadow-sky-100">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,2.3fr)_minmax(0,1.7fr)] md:items-center">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Keyword
+              </label>
+              <input
+                type="text"
+                placeholder="Job title, skill, or company"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                className="w-full rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-sm text-slate-900 placeholder-slate-300 outline-none focus:border-sky-400 focus:bg-white focus:ring-2 focus:ring-sky-200"
+              />
             </div>
-            <div className="mt-2 text-right text-[11px] text-slate-400">
-              Built by{" "}
-              <span className="font-semibold text-slate-100">
-                Srinath Reddy
-              </span>{" "}
-              🚀
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Job type
+                </label>
+                <select
+                  value={jobTypeFilter}
+                  onChange={(e) =>
+                    setJobTypeFilter(e.target.value as "Any" | JobType)
+                  }
+                  className="w-full rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:bg-white focus:ring-2 focus:ring-sky-200"
+                >
+                  <option value="Any">Any job type</option>
+                  <option value="Full-time">Full-time</option>
+                  <option value="Contract">Contract</option>
+                  <option value="Internship">Internship</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                  Work mode
+                </label>
+                <select
+                  value={workModeFilter}
+                  onChange={(e) =>
+                    setWorkModeFilter(e.target.value as "Any" | WorkMode)
+                  }
+                  className="w-full rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-400 focus:bg-white focus:ring-2 focus:ring-sky-200"
+                >
+                  <option value="Any">Any work mode</option>
+                  <option value="Onsite">Onsite</option>
+                  <option value="Remote">Remote</option>
+                  <option value="Hybrid">Hybrid</option>
+                </select>
+              </div>
             </div>
           </div>
-        </section>
 
-        {/* Main 3-column layout */}
-        <section className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1.2fr)] items-start">
-          {/* 1. Resume */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/60 p-4 shadow-inner shadow-black/40">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold tracking-wide text-slate-300 uppercase">
-                1. Your current resume
-              </h2>
-              <span className="text-[11px] text-slate-500">
-                {resumeText.length.toLocaleString()} chars
-              </span>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Location
+              </label>
+              <input
+                type="text"
+                placeholder="City, state, or Remote"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                className="w-full rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-sm text-slate-900 placeholder-slate-300 outline-none focus:border-sky-400 focus:bg-white focus:ring-2 focus:ring-sky-200"
+              />
             </div>
 
+            {/* CTA is job-first now */}
             <button
               type="button"
-              className="mb-3 inline-flex items-center rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-slate-100 hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-800/70 disabled:text-slate-500"
               onClick={() => {
-                const input = document.getElementById(
-                  "resume-upload-input"
-                ) as HTMLInputElement | null;
-                input?.click();
+                setKeyword((k) => k.trim());
+                setLocation((l) => l.trim());
               }}
-              disabled={uploadingResume}
+              className="flex w-full items-center justify-center rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-sky-300 hover:bg-sky-700"
             >
-              {uploadingResume ? "Extracting text from PDF…" : "Upload PDF"}
-            </button>
-
-            <input
-              id="resume-upload-input"
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleResumePdfUpload(file);
-              }}
-            />
-
-            {feedback && (
-              <p className="mb-2 text-[11px] text-amber-300">{feedback}</p>
-            )}
-
-            <textarea
-              className="mt-1 h-64 w-full resize-none rounded-2xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none ring-0 focus:border-cyan-500/70"
-              placeholder="Paste your existing resume text here… or upload a PDF above."
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-            />
-          </div>
-
-          {/* 2. JD */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/60 p-4 shadow-inner shadow-black/40">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold tracking-wide text-slate-300 uppercase">
-                2. Paste job description (JD)
-              </h2>
-              <span className="text-[11px] text-slate-500">
-                {jdText.length.toLocaleString()} chars
-              </span>
-            </div>
-
-            <textarea
-              className="mt-1 h-64 w-full resize-none rounded-2xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-100 outline-none ring-0 focus:border-cyan-500/70"
-              placeholder="Paste the JD you are applying for…"
-              value={jdText}
-              onChange={(e) => setJdText(e.target.value)}
-            />
-
-            <button
-              onClick={handleGenerateResume}
-              disabled={loadingResume || !resumeText.trim() || !jdText.trim()}
-              className={
-                loadingResume || !resumeText.trim() || !jdText.trim()
-                  ? "mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-500 cursor-not-allowed"
-                  : "mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-cyan-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow hover:bg-cyan-400"
-              }
-            >
-              {loadingResume ? "Generating…" : "Generate Tailored Resume"}
+              Search matching roles
             </button>
           </div>
+        </div>
 
-          {/* 3. Tailored resume */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-950/60 p-4 shadow-inner shadow-black/40">
-            <div className="mb-2 flex items-center justify-between">
-              <div>
-                <h2 className="text-xs font-semibold tracking-wide text-slate-300 uppercase">
-                  3. Tailored resume (ready to send)
-                </h2>
-                <p className="mt-0.5 text-[11px] text-slate-500">
-                  Optimized to match your JD while keeping your original
-                  experience.
-                </p>
-              </div>
-              <span
-                className={
-                  generatedResume
-                    ? "rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] font-semibold text-emerald-300"
-                    : "rounded-full bg-slate-700/60 px-2 py-1 text-[10px] font-semibold text-slate-400"
-                }
+        <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-[11px] text-slate-500">
+            Showing{" "}
+            <span className="font-semibold text-slate-800">
+              {filteredJobs.length}
+            </span>{" "}
+            matching roles from your job board.
+          </p>
+
+          <div className="flex flex-wrap gap-1.5">
+            {TRENDING_CATEGORIES.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setKeyword(item.keyword)}
+                className="inline-flex items-center gap-1 rounded-full border border-sky-100 bg-gradient-to-r from-sky-50 via-white to-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700 shadow-sm hover:border-sky-300 hover:shadow-md"
               >
-                {generatedResume ? "Ready" : "Waiting"}
-              </span>
-            </div>
-
-            <div className="mt-1 h-64 overflow-auto rounded-2xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs whitespace-pre-wrap text-slate-100">
-              {generatedResume || (
-                <span className="text-slate-500">
-                  Your AI-tailored resume will appear here after you click{" "}
-                  <span className="font-semibold">Generate Tailored Resume</span>.
-                </span>
-              )}
-            </div>
-
-            <PdfButton data={generatedResume} filename="HirePath-Resume.pdf" />
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                {item.label}
+              </button>
+            ))}
           </div>
-        </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        {/* Bottom info row + feedback card */}
-        <section className="grid gap-3 text-[11px] text-slate-300 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
-            <h3 className="text-[11px] font-semibold text-slate-100">
-              Built for real resumes
-            </h3>
-            <p className="mt-1 text-[11px] text-slate-400">
-              No generic one-page template. HirePath works with your messy,
-              long, real resume and shapes it for each role.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
-            <h3 className="text-[11px] font-semibold text-slate-100">
-              Clear, honest guidance
-            </h3>
-            <p className="mt-1 text-[11px] text-slate-400">
-              The chatbot can call out missing keywords, weak bullets, or
-              summary gaps so you know exactly what to improve.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
-            <h3 className="text-[11px] font-semibold text-slate-100">
-              You stay in control
-            </h3>
-            <p className="mt-1 text-[11px] text-slate-400">
-              Edit any text before you send, generate multiple versions, and
-              clear everything with a refresh. HirePath is a co-pilot, not a
-              black box.
-            </p>
-          </div>
+{/* ---------- TRUSTED STRIP ---------- */}
+<section className="border-y border-sky-100 bg-gradient-to-r from-sky-50/80 via-white to-sky-50/80">
+  <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-5 md:flex-row md:items-center md:justify-between">
+    <div className="max-w-md space-y-1">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-600">
+        Trusted by job seekers
+      </p>
+      <p className="text-sm">
+        <span className="text-base font-semibold text-slate-900">
+          3,200+ people
+        </span>{" "}
+        finding tech roles faster with HirePath.
+      </p>
+      <p className="text-[11px] text-slate-500">
+        From entry-level developers to senior AI/ML engineers, job seekers use
+        HirePath to discover better roles and stand out in recruiter inboxes.
+      </p>
 
-          {/* Feedback card */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
-            <h3 className="text-[11px] font-semibold text-slate-100">
-              Feedback for HirePath
-            </h3>
-            <p className="mt-1 text-[11px] text-slate-400">
-              Tell Srinath what feels confusing, what you love, or what you’d
-              like to see next. This helps improve the next version.
-            </p>
-            <textarea
-              className="mt-2 h-20 w-full resize-none rounded-xl border border-slate-800 bg-slate-950/80 px-2 py-1 text-[11px] text-slate-100 outline-none focus:border-cyan-500/70"
-              placeholder="Type your feedback here…"
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-            />
-            <p className="mt-1 text-[10px] text-slate-500">
-              (Right now this stays on your screen — you can copy & paste it to
-              share with Srinath.)
-            </p>
-          </div>
-        </section>
+      <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+        <span className="flex">
+          {"★★★★★".split("").map((star, idx) => (
+            <span key={idx} className="text-amber-400">
+              ★
+            </span>
+          ))}
+        </span>
+        <span>
+          <span className="font-semibold text-slate-800">4.8/5</span>{" "}
+          average satisfaction
+        </span>
+        <span className="text-slate-400">·</span>
+        <span>1,200+ private reviews</span>
+      </div>
+    </div>
 
-        {/* Chatbot dock */}
-        <section className="fixed bottom-4 right-4 w-full max-w-xs rounded-3xl border border-slate-800 bg-slate-950/95 p-3 shadow-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/15 text-[11px] font-bold text-cyan-300">
-                HP
+    <div className="flex items-center gap-3">
+      <div className="flex -space-x-3">
+        <div className="relative h-8 w-8 overflow-hidden rounded-full border border-white bg-slate-200 shadow-sm">
+          <Image
+            src="/avatars/dev1.png"
+            alt="Job seeker avatar"
+            fill
+            className="object-cover"
+          />
+        </div>
+        <div className="relative h-8 w-8 overflow-hidden rounded-full border border-white bg-slate-200 shadow-sm">
+          <Image
+            src="/avatars/dev2.png"
+            alt="Job seeker avatar"
+            fill
+            className="object-cover"
+          />
+        </div>
+        <div className="relative flex h-8 w-8 items-center justify-center rounded-full border border-white bg-sky-100 text-[11px] font-semibold text-sky-700 shadow-sm">
+          +3k
+        </div>
+      </div>
+      <p className="max-w-xs text-[11px] text-slate-500">
+        Job seekers from India, US, Canada, and Europe testing AI-ready resumes
+        every day.
+      </p>
+    </div>
+
+    <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
+      <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+        Remote tech job boards
+      </span>
+      <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+        LinkedIn recruiters
+      </span>
+      <span className="rounded-full border border-slate-200 bg-white px-3 py-1">
+        AI / ML roles
+      </span>
+    </div>
+  </div>
+</section>
+
+
+
+      {/* ---------- JOB LIST ---------- */}
+<section className="mx-auto max-w-6xl px-4 pb-16 pt-6">
+  {loadingJobs ? (
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-24 rounded-2xl bg-sky-100/70 animate-pulse"
+        />
+      ))}
+    </div>
+  ) : filteredJobs.length === 0 ? (
+    <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50/60 p-6 text-sm text-slate-500">
+      No roles match your filters. Try clearing them or searching a
+      broader keyword.
+    </div>
+  ) : (
+    <div className="space-y-4">
+      {filteredJobs.map((job) => {
+        const tags = job.tags
+          ? job.tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean)
+          : [];
+
+        const jobTypeLabel = job.jobType || "Job";
+        const workModeLabel = job.workMode || "";
+
+        const descriptionPreview =
+          job.description.length > 260
+            ? job.description.slice(0, 260) + "…"
+            : job.description;
+
+        return (
+          <article
+            key={job.id}
+            className="rounded-2xl border border-sky-100 bg-white/95 p-5 shadow-sm shadow-sky-100"
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              {/* LEFT SIDE CONTENT */}
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {job.title}
+                  </h2>
+
+                  {jobTypeLabel && (
+                    <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-sky-700">
+                      {jobTypeLabel}
+                    </span>
+                  )}
+                  {workModeLabel && (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-700">
+                      {workModeLabel}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  {job.company && <span>{job.company}</span>}
+                  {job.company && job.location && <span> · </span>}
+                  {job.location && (
+                    <span className="text-slate-700">{job.location}</span>
+                  )}
+                </p>
+
+                {job.salaryRange && (
+                  <p className="text-xs text-emerald-600">
+                    {job.salaryRange}
+                  </p>
+                )}
+
+                <p className="mt-2 text-xs text-slate-700">
+                  {descriptionPreview}
+                </p>
+
+                {tags.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {/* RIGHT SIDE BUTTONS */}
+<div className="flex flex-col items-end gap-[4px] text-right text-[11px] text-slate-500">
+
+  <span>
+    Posted on{" "}
+    <span className="font-medium text-slate-700">
+      {formatDate(job.createdAt)}
+    </span>
+  </span>
+
+  <div className="flex items-center gap-[10px]">
+
+    {/* LinkedIn style — ultra minimal */}
+    <button
+      type="button"
+      onClick={() => handleViewDetails(job)}
+      className="group inline-flex items-center gap-[2px] 
+                 text-[11.5px] font-medium text-slate-700
+                 hover:text-sky-700 transition"
+    >
+      <span className="group-hover:underline leading-none">
+        View details
+      </span>
+      <span
+        className="text-[13px] text-slate-400 group-hover:text-sky-700 
+                   transition-transform duration-150 ease-out 
+                   group-hover:translate-x-[1px] leading-none"
+      >
+        ›
+      </span>
+    </button>
+
+    {/* Tailor CTA — unchanged */}
+    <button
+      type="button"
+      // NEW
+onClick={() => handleTailor(job)}
+
+      className="rounded-lg bg-sky-600 px-4 py-1.5 text-[11.5px] font-semibold 
+                 text-white shadow-sm hover:bg-sky-700 transition"
+    >
+      Tailor
+    </button>
+
+  </div>
+</div>
+
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  )}
+</section>
+
+
+
+
+      {/* Your existing chat docked bottom-right */}
+      <AskHirePathChat />
+
+      {/* ---------- VIEW DETAILS MODAL ---------- */}
+      {selectedJob && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center px-3 pb-4 sm:items-center sm:px-4 sm:pb-6">
+          {/* Dark backdrop */}
+          <div
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+            onClick={closeDetails}
+          />
+          {/* Panel */}
+          <div className="relative z-50 w-full max-w-2xl rounded-2xl bg-white shadow-2xl shadow-slate-900/20">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div className="space-y-1">
+                <h2 className="text-sm font-semibold text-slate-900">
+                  {selectedJob.title}
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  {selectedJob.company && <span>{selectedJob.company}</span>}
+                  {selectedJob.company && selectedJob.location && <span> · </span>}
+                  {selectedJob.location && (
+                    <span className="text-slate-700">
+                      {selectedJob.location}
+                    </span>
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {selectedJob.jobType && (
+                    <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-700">
+                      {selectedJob.jobType}
+                    </span>
+                  )}
+                  {selectedJob.workMode && (
+                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-700">
+                      {selectedJob.workMode}
+                    </span>
+                  )}
+                  {selectedJob.salaryRange && (
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                      {selectedJob.salaryRange}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeDetails}
+                className="inline-flex items-center rounded-full bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-100"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto px-5 py-4 text-sm text-slate-700">
               <div>
-                <h3 className="text-[11px] font-semibold text-slate-100">
-                  HirePath Chatbot
-                </h3>
-                <p className="text-[10px] text-slate-400">
-                  Ask about keywords, bullet rewrites, or interview prep.
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Job description
+                </p>
+                <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
+                  {selectedJob.description}
                 </p>
               </div>
+
+              {selectedJob.tags && (
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Skills / tags
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedJob.tags
+                      .split(",")
+                      .map((t) => t.trim())
+                      .filter(Boolean)
+                      .map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col items-start justify-between gap-3 border-t border-slate-100 pt-4 pb-1 sm:flex-row sm:items-center">
+                <p className="text-[11px] text-slate-500">
+                  Posted on{" "}
+                  <span className="font-medium text-slate-700">
+                    {formatDate(selectedJob.createdAt)}
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  {/* Minimal ghost Back button */}
+                  <button
+                    type="button"
+                    onClick={closeDetails}
+                    className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    Back to list
+                  </button>
+                  {/* Clean compact Tailor CTA */}
+                  <button
+  type="button"
+  onClick={() => {
+    if (!selectedJob) return;
+    handleTailor(selectedJob);      // ✅ pass full Job
+    closeDetails();
+  }}
+  className="inline-flex items-center rounded-full bg-sky-600 px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-sky-700"
+>
+  Tailor this job
+</button>
+
+                </div>
+              </div>
             </div>
           </div>
-
-          <div className="mb-2 max-h-40 overflow-auto rounded-2xl border border-slate-800 bg-slate-950/70 px-2 py-1 text-[11px] text-slate-100">
-            {chatLog.length === 0 ? (
-              <p className="text-[11px] text-slate-500">
-                Example questions:{" "}
-                <span className="italic">
-                  “What skills should I highlight more for this JD?”
-                </span>{" "}
-                or{" "}
-                <span className="italic">
-                  “Can you suggest a stronger summary?”
-                </span>
-                .
-              </p>
-            ) : (
-              chatLog.map((m, i) => (
-                <div
-                  key={i}
-                  className={`mb-1 ${
-                    m.role === "user" ? "text-cyan-300" : "text-slate-100"
-                  }`}
-                >
-                  <span className="font-semibold">
-                    {m.role === "user" ? "You: " : "HirePath: "}
-                  </span>
-                  {m.content}
-                </div>
-              ))
-            )}
-          </div>
-
-          <form onSubmit={handleChatSubmit} className="flex items-center gap-1">
-            <input
-              type="text"
-              className="flex-1 rounded-2xl border border-slate-800 bg-slate-950/80 px-2 py-1 text-[11px] text-slate-100 outline-none focus:border-cyan-500/70"
-              placeholder="Type your question…"
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-            />
-            <button
-              type="submit"
-              disabled={loadingChat || !chatInput.trim()}
-              className={
-                loadingChat || !chatInput.trim()
-                  ? "rounded-2xl bg-slate-700 px-3 py-1 text-[11px] font-semibold text-slate-400 cursor-not-allowed"
-                  : "rounded-2xl bg-cyan-500 px-3 py-1 text-[11px] font-semibold text-slate-950 hover:bg-cyan-400"
-              }
-            >
-              {loadingChat ? "…" : "Send"}
-            </button>
-          </form>
-        </section>
-      </div>
-    </main>
+        </div>
+      )}
+    </div>
   );
 }

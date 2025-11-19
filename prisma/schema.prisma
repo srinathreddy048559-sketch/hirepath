@@ -17,4 +17,114 @@ model History {
   jd        String
   resume    String
   tailored  String
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String?
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String?
+  email          String?  @unique
+  emailVerified  DateTime?
+  image          String?
+
+  password       String?
+
+  // -------- PROFILE FIELDS --------
+  headline           String?    // "Machine Learning Engineer"
+  location           String?    // "Manchester, CT"
+  phone              String?    // "(860) 753-5887"
+  workAuth           String?    // "EAD"
+  shortSummary       String?    // small about me
+  linkedin           String?    // profile link
+  github             String?    // profile link
+  preferredRoles     String?    // comma string
+  preferredLocations String?    // comma string
+  resumeUrl          String?    // stored resume
+  profileCompletion  Int?       // 0–100
+  profileUpdatedAt   DateTime?  @updatedAt
+
+  histories      History[]
+  jobs           Job[]
+
+  accounts       Account[]
+  sessions       Session[]
+}
+
+
+
+model Job {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // Basic info
+  title       String
+  company     String?
+  location    String?
+
+  // NEW – structured hiring info
+  /// "Full-time" | "Contract" | "Internship"
+  jobType     String   @default("Full-time")
+
+  /// "Onsite" | "Remote" | "Hybrid"
+  workMode    String   @default("Onsite")
+
+  /// e.g. "$150k – $180k", "$70 – $90/hr"
+  salaryRange String?
+
+  /// comma-separated tags, e.g. "Python, AWS, RAG, LLMs"
+  tags        String?
+
+  /// (old field – legacy)
+  employment  String?
+
+  // Full job description / JD
+  description String
+
+  // Optional structured requirements
+  requirements String?
+
+  // Job posted by which user? (✨ optional for now)
+  postedBy    User?   @relation(fields: [postedById], references: [id], onDelete: Cascade)
+  postedById  String?
+}
+
+
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }

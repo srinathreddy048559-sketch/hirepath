@@ -1,119 +1,207 @@
 // app/history/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-
-type Result = {
-  summary_text: string;
-  summary_bullets: string[];
-  email_subject: string;
-  email_body: string;
-};
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 type HistoryItem = {
   id: string;
-  createdAt: string;
-  resume: string;
+  createdAt: string; // ISO string from API
+  title: string;
   jd: string;
-  result: Result;
+  resume: string;
+  tailored: string; // JSON string from /api/tailor
 };
 
 export default function HistoryPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const isAuthLoading = status === "loading";
+  const isAuthed = !!session?.user;
 
   useEffect(() => {
-    (async () => {
+    if (!isAuthed) {
+      setLoading(false);
+      return;
+    }
+
+    async function loadHistory() {
       try {
-        const res = await fetch("/api/history");
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch("/api/history", { cache: "no-store" });
         const data = await res.json();
-        setItems(Array.isArray(data) ? data : []);
-      } catch (e) {
-        console.error("Failed to load history:", e);
+
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.error || "Failed to load history");
+        }
+
+        setItems(data.histories ?? []);
+      } catch (e: any) {
+        console.error(e);
+        setError(e.message || "Could not load history");
       } finally {
         setLoading(false);
       }
-    })();
-  }, []);
+    }
 
-  function handleReuse(item: HistoryItem) {
-    // Save chosen item to localStorage to be picked up by Home page
-    localStorage.setItem("hirepath_last", JSON.stringify(item));
-    // Navigate back home
-    window.location.href = "/";
+    loadHistory();
+  }, [isAuthed]);
+
+  function formatDate(iso: string) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return iso;
+    }
+  }
+
+  function handleViewTailor(item: HistoryItem) {
+    // For now just send them to /tailor;
+    // later we can prefill JD + resume using localStorage or query params.
+    router.push("/tailor");
+  }
+
+  if (isAuthLoading || loading) {
+    return (
+      <main className="min-h-screen bg-slate-50/80 flex items-center justify-center">
+        <div className="rounded-2xl bg-white px-6 py-4 shadow-sm text-sm text-slate-600">
+          Loading your history…
+        </div>
+      </main>
+    );
+  }
+
+  if (!isAuthed) {
+    return (
+      <main className="min-h-screen bg-slate-50/80 flex items-center justify-center">
+        <div className="rounded-2xl bg-white px-6 py-4 shadow-sm text-sm text-slate-700">
+          Please log in to see your history.
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">History</h1>
-        <Link href="/" className="text-sm text-indigo-600 hover:underline">Back to Home</Link>
-      </div>
+    <main className="min-h-screen bg-slate-50 pb-12 pt-6">
+      <div className="mx-auto max-w-6xl px-4 space-y-6">
+        {/* Breadcrumb */}
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-600">
+          HIREPATH · HISTORY
+        </p>
 
-      {loading && <p>Loading…</p>}
-      {!loading && items.length === 0 && (
-        <p className="text-gray-600">No history yet. Generate insights on the Home page to see them here.</p>
-      )}
+        {/* Heading */}
+        <header className="space-y-2">
+          <h1 className="text-[2rem] font-black leading-tight text-slate-900 md:text-[2.2rem]">
+            Your tailored resume history.
+          </h1>
+          <p className="max-w-2xl text-sm text-slate-600">
+            Every time you run the tailor, HirePath saves the job description and
+            tailored resume here — visible only to you.
+          </p>
+        </header>
 
-      <div className="space-y-4">
-        {items.map((h) => (
-          <div
-            key={h.id}
-            className="p-4 rounded-xl border bg-white/70 dark:bg-zinc-900/60 backdrop-blur-sm shadow-sm hover:shadow-md transition"
-          >
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-gray-500">
-                  {new Date(h.createdAt).toLocaleString()}
-                </p>
-                <p className="font-semibold mt-1 truncate">{h.result?.email_subject}</p>
-                <p className="text-sm text-gray-600 line-clamp-2 mt-1">
-                  {h.result?.summary_text}
-                </p>
-              </div>
-
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() => handleReuse(h)}
-                  className="px-3 py-1.5 text-sm rounded-lg border bg-white hover:bg-gray-50"
-                  title="Load this result into Home"
-                >
-                  Reuse
-                </button>
-                <details className="group">
-                  <summary className="px-3 py-1.5 text-sm rounded-lg border bg-white hover:bg-gray-50 cursor-pointer">
-                    Preview
-                  </summary>
-                  <div className="mt-3 text-sm grid md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Summary</p>
-                      <p className="whitespace-pre-line">{h.result?.summary_text}</p>
-                      {h.result?.summary_bullets?.length ? (
-                        <>
-                          <p className="text-xs text-gray-500 mt-3 mb-1">Key Points</p>
-                          <ul className="list-disc ml-5">
-                            {h.result.summary_bullets.map((b, i) => (
-                              <li key={i}>{b}</li>
-                            ))}
-                          </ul>
-                        </>
-                      ) : null}
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 mb-1">Email Subject</p>
-                      <p className="font-medium">{h.result?.email_subject}</p>
-                      <p className="text-xs text-gray-500 mt-3 mb-1">Email Body</p>
-                      <div className="border rounded-lg p-3 bg-gray-50 whitespace-pre-line">
-                        {h.result?.email_body}
-                      </div>
-                    </div>
-                  </div>
-                </details>
-              </div>
-            </div>
+        {error && (
+          <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-2 text-xs text-rose-700">
+            {error}
           </div>
-        ))}
+        )}
+
+        {items.length === 0 && !error && (
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">
+            No history yet. Run your first tailor from the{" "}
+            <button
+              type="button"
+              onClick={() => router.push("/tailor")}
+              className="font-semibold text-sky-600 underline-offset-2 hover:underline"
+            >
+              Tailor resume
+            </button>{" "}
+            page.
+          </div>
+        )}
+
+        {items.length > 0 && (
+          <section className="space-y-3">
+            {items.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100"
+              >
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900">
+                      {item.title || "Tailored resume run"}
+                    </h2>
+                    <p className="text-[11px] text-slate-500">
+                      {formatDate(item.createdAt)}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2 text-[11px] text-slate-500">
+                    <span>
+                      JD:{" "}
+                      <span className="font-semibold">
+                        {item.jd ? item.jd.length : 0} chars
+                      </span>
+                    </span>
+                    <span>·</span>
+                    <span>
+                      Resume:{" "}
+                      <span className="font-semibold">
+                        {item.resume ? item.resume.length : 0} chars
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Job description (preview)
+                    </p>
+                    <p className="line-clamp-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                      {item.jd || "No JD text stored."}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Tailored resume (preview)
+                    </p>
+                    <p className="line-clamp-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 whitespace-pre-line">
+                      {/* tailored is JSON string from /api/tailor; show raw for now */}
+                      {item.tailored}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleViewTailor(item)}
+                    className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-[11px] font-medium text-slate-700 hover:border-sky-500 hover:text-sky-600"
+                  >
+                    Tailor a new resume
+                  </button>
+                </div>
+              </article>
+            ))}
+          </section>
+        )}
       </div>
     </main>
   );

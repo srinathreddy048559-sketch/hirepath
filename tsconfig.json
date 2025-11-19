@@ -1,43 +1,30 @@
+// tsconfig.json
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "es2020"
-    ],
-    "jsx": "preserve",
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "allowJs": false,
+    "target": "es2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
     "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "@components/*": [
-        "app/components/*"
-      ],
-      "@ui/*": [
-        "app/components/ui/*"
-      ]
-    },
-    "types": [
-      "node"
-    ],
-    "typeRoots": [
-      "./types",
-      "./node_modules/@types"
-    ],
-    "incremental": true,
+    "module": "esnext",
+    "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+
+    // ✅ IMPORTANT: this fixes "@/..." imports
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+
+    // ✅ Pick up your custom `types/next-auth.d.ts`
+    "typeRoots": ["./types", "./node_modules/@types"],
+
     "plugins": [
       {
         "name": "next"
@@ -45,11 +32,10 @@
     ]
   },
   "include": [
+    "next-env.d.ts",
     ".next/types/**/*.ts",
     "**/*.ts",
     "**/*.tsx"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }
