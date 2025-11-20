@@ -17,7 +17,37 @@ CREATE TABLE "User" (
     "email" TEXT,
     "emailVerified" DATETIME,
     "image" TEXT,
-    "password" TEXT
+    "password" TEXT,
+    "headline" TEXT,
+    "location" TEXT,
+    "phone" TEXT,
+    "workAuth" TEXT,
+    "shortSummary" TEXT,
+    "linkedin" TEXT,
+    "github" TEXT,
+    "preferredRoles" TEXT,
+    "preferredLocations" TEXT,
+    "resumeUrl" TEXT,
+    "profileCompletion" INTEGER,
+    "profileUpdatedAt" DATETIME
+);
+
+-- CreateTable
+CREATE TABLE "Job" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "title" TEXT NOT NULL,
+    "company" TEXT,
+    "location" TEXT,
+    "jobType" TEXT NOT NULL DEFAULT 'Full-time',
+    "workMode" TEXT NOT NULL DEFAULT 'Onsite',
+    "salaryRange" TEXT,
+    "tags" TEXT,
+    "employment" TEXT,
+    "description" TEXT NOT NULL,
+    "requirements" TEXT,
+    "postedById" TEXT,
+    CONSTRAINT "Job_postedById_fkey" FOREIGN KEY ("postedById") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
