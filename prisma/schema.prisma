@@ -6,16 +6,10 @@ generator client {
 }
 
 datasource db {
-  provider     = "libsql"
+  provider     = "sqlite"
   relationMode = "prisma"
-  url          = env("DATABASE_URL")
+  url          = "file:./dev.db"
 }
-
-
-
-
-
-
 
 
 model History {
