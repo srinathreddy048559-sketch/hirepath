@@ -1,30 +1,20 @@
-import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: Request, context: { params: { id: string } }) {
   try {
+    const { id } = context.params;
+
     const job = await prisma.job.findUnique({
-      where: { id: params.id },
-      include: {
-        postedBy: {
-          select: { email: true, name: true },
-        },
-      },
+      where: { id },
     });
 
     if (!job) {
-      return NextResponse.json({ message: "Job not found" }, { status: 404 });
+      return new Response(JSON.stringify({ error: "Job not found" }), { status: 404 });
     }
 
-    return NextResponse.json({ job });
-  } catch (error) {
-    console.error("Error fetching job:", error);
-    return NextResponse.json(
-      { message: "Failed to fetch job" },
-      { status: 500 }
-    );
+    return new Response(JSON.stringify(job), { status: 200 });
+  } catch (err: any) {
+    console.error("Job fetch error:", err);
+    return new Response(JSON.stringify({ error: "Server error" }), { status: 500 });
   }
 }
