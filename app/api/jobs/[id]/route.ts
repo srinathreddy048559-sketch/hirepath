@@ -1,8 +1,14 @@
 import { prisma } from "@/lib/prisma";
 
-export async function GET(req: Request, context: { params: { id: string } }) {
+export async function GET(req: Request) {
   try {
-    const { id } = context.params;
+    // extract the ID from URL
+    const url = new URL(req.url);
+    const id = url.pathname.split("/").pop();
+
+    if (!id) {
+      return new Response(JSON.stringify({ error: "Missing job ID" }), { status: 400 });
+    }
 
     const job = await prisma.job.findUnique({
       where: { id },
