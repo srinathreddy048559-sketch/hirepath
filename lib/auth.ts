@@ -1,10 +1,11 @@
 // lib/auth.ts
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import prisma from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
-  // ✅ No Prisma adapter in production – SQLite on Vercel is read-only
-  // adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma),
 
   providers: [
     GoogleProvider({
@@ -20,16 +21,14 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.id = (user as any).id ?? token.sub;
+        (token as any).id = (user as any).id ?? token.sub;
       }
       return token;
     },
 
     async session({ session, token }) {
       if (session.user) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (session.user as any).id = (token as any).id ?? token.sub;
+        (session.user as any).id = (token as any).id ?? (token as any).sub;
       }
       return session;
     },
