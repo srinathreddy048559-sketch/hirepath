@@ -2,10 +2,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }   // 👈 NOTE: Promise here
 ) {
   try {
-    // ⬅️ NEW: params is a Promise in Next 15
+    // Next 15: params is a Promise, so we await it
     const { id } = await params;
 
     const job = await prisma.job.findUnique({
@@ -18,8 +18,11 @@ export async function GET(
       });
     }
 
-    return new Response(JSON.stringify(job), { status: 200 });
-  } catch (err) {
+    return new Response(JSON.stringify(job), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err: any) {
     console.error("Job fetch error:", err);
     return new Response(JSON.stringify({ error: "Server error" }), {
       status: 500,
