@@ -1,4 +1,4 @@
-// app/api/jobs/[id]/route.ts
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
 export async function GET(
@@ -6,10 +6,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const jobId = params.id; // ✅ no await, params comes from the second arg
-
     const job = await prisma.job.findUnique({
-      where: { id: jobId },
+      where: { id: params.id },
       include: {
         postedBy: {
           select: { email: true, name: true },
@@ -18,16 +16,15 @@ export async function GET(
     });
 
     if (!job) {
-      return new Response(JSON.stringify({ message: "Job not found" }), {
-        status: 404,
-      });
+      return NextResponse.json({ message: "Job not found" }, { status: 404 });
     }
 
-    return new Response(JSON.stringify({ job }), { status: 200 });
-  } catch (err) {
-    console.error("Error fetching job by id:", err);
-    return new Response(JSON.stringify({ message: "Server error" }), {
-      status: 500,
-    });
+    return NextResponse.json({ job });
+  } catch (error) {
+    console.error("Error fetching job:", error);
+    return NextResponse.json(
+      { message: "Failed to fetch job" },
+      { status: 500 }
+    );
   }
 }
