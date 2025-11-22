@@ -1,12 +1,11 @@
 // app/api/jobs/[id]/route.ts
 import prisma from "@/lib/prisma";
 
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }  // ✅ plain object, not Promise
-) {
+export async function GET(req: Request, context: any) {
   try {
-    const { id } = params;
+    // Next 15: context.params can be a Promise, so we safely await it
+    const params = await context.params;
+    const id = params.id as string;
 
     const job = await prisma.job.findUnique({
       where: { id },
@@ -23,7 +22,7 @@ export async function GET(
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Job fetch error:", err);
     return new Response(JSON.stringify({ error: "Server error" }), {
       status: 500,
