@@ -24,7 +24,8 @@ type Job = {
 };
 
 export default async function JobsPage() {
-  const jobs = await prisma.job.findMany({
+  // 👇 Explicit type so TS knows jobs is Job[]
+  const jobs: Job[] = await prisma.job.findMany({
     orderBy: { createdAt: "desc" },
   });
 
@@ -77,11 +78,11 @@ export default async function JobsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {jobs.map((job) => {
+            {jobs.map((job: Job) => {
               const tags = job.tags
                 ? job.tags
                     .split(",")
-                    .map((t) => t.trim())
+                    .map((t: string) => t.trim()) // 👈 type t
                     .filter(Boolean)
                 : [];
 
@@ -140,7 +141,7 @@ export default async function JobsPage() {
 
                       {tags.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-1.5">
-                          {tags.map((tag) => (
+                          {tags.map((tag: string) => (
                             <span
                               key={tag}
                               className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700"
@@ -162,14 +163,6 @@ export default async function JobsPage() {
                       </span>
 
                       <div className="flex gap-2">
-                        {/* Optional future details page */}
-                        {/* <Link
-                          href={`/jobs/${job.id}`}
-                          className="rounded-xl border border-slate-200 px-3.5 py-1.5 text-[11px] font-medium text-slate-700 hover:border-sky-400 hover:text-sky-700"
-                        >
-                          View details
-                        </Link> */}
-
                         <Link
                           href={`/?jobId=${job.id}`}
                           className="inline-flex items-center rounded-xl bg-sky-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-sky-700"

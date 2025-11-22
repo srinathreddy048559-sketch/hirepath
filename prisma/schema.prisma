@@ -1,15 +1,18 @@
 // prisma/schema.prisma
 
+// prisma/schema.prisma
+
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
-  provider     = "sqlite"
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
   relationMode = "prisma"
-  url          = "file:./dev.db"
 }
+
 
 
 model History {
