@@ -1,3 +1,4 @@
+// app/api/profile/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -10,7 +11,10 @@ export async function GET() {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
-      return NextResponse.json({ ok: false, error: "not_logged_in" });
+      return NextResponse.json(
+        { ok: false, error: "not_logged_in" },
+        { status: 401 }
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -38,7 +42,10 @@ export async function GET() {
     return NextResponse.json({ ok: true, user });
   } catch (e) {
     console.error("[profile][GET] error", e);
-    return NextResponse.json({ ok: false, error: "profile_get_failed" });
+    return NextResponse.json(
+      { ok: false, error: "profile_get_failed" },
+      { status: 500 }
+    );
   }
 }
 
@@ -49,11 +56,15 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
-      return NextResponse.json({ ok: false, error: "not_logged_in" });
+      return NextResponse.json(
+        { ok: false, error: "not_logged_in" },
+        { status: 401 }
+      );
     }
 
+    const email = session.user.email!;
     const body = await req.json();
-    const data = body || {};
+    const data: Record<string, any> = body || {};
 
     // ----- Auto compute profile completeness -----
     const fields = [
@@ -76,11 +87,20 @@ export async function PUT(req: NextRequest) {
 
     const completion = Math.round((filled / fields.length) * 100);
 
-    const updated = await prisma.user.update({
-      where: { email: session.user.email },
-      data: {
-        ...data,
-        profileCompletion: completion,
+    const baseData = {
+      ...data,
+      profileCompletion: completion,
+    };
+
+    // ✅ use upsert so it doesn't crash if user row doesn't exist yet
+    const updated = await prisma.user.upsert({
+      where: { email },
+      update: baseData,
+      create: {
+        email,
+        name: session.user.name ?? null,
+        image: (session.user as any).image ?? null,
+        ...baseData,
       },
       select: {
         profileUpdatedAt: true,

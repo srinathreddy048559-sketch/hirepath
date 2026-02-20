@@ -1,25 +1,24 @@
 // app/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
+import { withAccelerate } from "@prisma/extension-accelerate";
 
+// Helper to create a new client (with Accelerate)
+function getPrismaClient() {
+  return new PrismaClient({
+    datasourceUrl: process.env.DATABASE_URL,
+  }).$extends(withAccelerate());
+}
+
+// Tell TypeScript what lives on globalThis
 const globalForPrisma = globalThis as unknown as {
-  prismaGlobal?: PrismaClient;
+  prisma?: ReturnType<typeof getPrismaClient>;
 };
 
-function makePrismaClient() {
-  return new PrismaClient({
-    log:
-      process.env.NODE_ENV === "development"
-        ? ["query", "error", "warn"]
-        : ["error"],
-  });
-}
-
-// ✅ single Prisma instance for dev + prod
-const prisma = globalForPrisma.prismaGlobal ?? makePrismaClient();
+// Re-use a single Prisma instance in dev, and a fresh one in prod
+export const prisma = globalForPrisma.prisma ?? getPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prismaGlobal = prisma;
+  globalForPrisma.prisma = prisma;
 }
 
-// default export used everywhere:  import prisma from "@/lib/prisma"
 export default prisma;

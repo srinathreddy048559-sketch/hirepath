@@ -1,4 +1,3 @@
-// app/jobs/[id]/page.tsx
 import React from "react";
 
 type Job = {
@@ -15,7 +14,12 @@ type Job = {
 };
 
 async function getJob(id: string): Promise<Job | null> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000");
+
   const res = await fetch(`${baseUrl}/api/jobs/${id}`, {
     cache: "no-store",
   });
@@ -29,10 +33,7 @@ async function getJob(id: string): Promise<Job | null> {
   return data.job as Job;
 }
 
-// ⚠️ NOTE:
-// Next 15’s generated PageProps type makes `params` a Promise in .next/types.
-// To avoid type conflicts, we let props be `any` here and just `await` params.
-// This works whether Next gives us a Promise or a plain object.
+// Next.js 15 params fix
 export default async function Page({ params }: any) {
   const resolvedParams = await params;
   const id = resolvedParams?.id ?? params?.id;
@@ -55,9 +56,8 @@ export default async function Page({ params }: any) {
   return (
     <div className="px-10 py-12 max-w-4xl">
       <h1 className="text-3xl font-bold text-slate-900">{job.title}</h1>
-
       <p className="text-lg mt-2 text-slate-700">
-        {job.company}{" "}
+        {job.company}
         {job.location && (
           <span className="text-sm ml-2 text-slate-500">{job.location}</span>
         )}

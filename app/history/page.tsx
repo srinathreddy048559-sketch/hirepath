@@ -14,6 +14,52 @@ type HistoryItem = {
   tailored: string; // JSON string from /api/tailor
 };
 
+// 🔍 Nicely formatted preview of the tailored resume
+function TailoredPreview({ raw }: { raw: string }) {
+  let text: string;
+
+  try {
+    const parsed: any = JSON.parse(raw);
+
+    if (typeof parsed === "string") {
+      text = parsed;
+    } else if (parsed?.sections && Array.isArray(parsed.sections)) {
+      // Your structured format: pull out summary + skills
+      const summarySection = parsed.sections.find(
+        (s: any) => s.kind === "summary"
+      );
+      const skillsSection = parsed.sections.find(
+        (s: any) => s.kind === "skills"
+      );
+
+      const summaryLines =
+        summarySection?.bullets?.slice(0, 3).join("\n") ?? "";
+      const skillsLine =
+        skillsSection?.bullets?.slice(0, 1).join(", ") ?? "";
+
+      text = [summaryLines, skillsLine && `Skills: ${skillsLine}`]
+        .filter(Boolean)
+        .join("\n\n");
+    } else {
+      // Fallback: compact JSON
+      text = JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    // Not JSON? Just show raw
+    text = raw || "No tailored resume text stored.";
+  }
+
+  const maxChars = 600;
+  const trimmed =
+    text.length > maxChars ? text.slice(0, maxChars) + " …" : text;
+
+  return (
+    <div className="whitespace-pre-line leading-relaxed">
+      {trimmed}
+    </div>
+  );
+}
+
 export default function HistoryPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -182,10 +228,9 @@ export default function HistoryPage() {
                     <p className="text-[11px] font-semibold text-slate-500">
                       Tailored resume (preview)
                     </p>
-                    <p className="line-clamp-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 whitespace-pre-line">
-                      {/* tailored is JSON string from /api/tailor; show raw for now */}
-                      {item.tailored}
-                    </p>
+                    <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 max-h-32 overflow-hidden">
+                      <TailoredPreview raw={item.tailored} />
+                    </div>
                   </div>
                 </div>
 

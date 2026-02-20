@@ -89,9 +89,12 @@ export default function Nav() {
       .toUpperCase()
       .slice(0, 2) || "U";
 
+  // 🔹 New nav structure: clear Home + Job search + Mock interviews
   const navLinks = [
-    { label: "Job search", href: "/" },
+    { label: "Home", href: "/" },
+    { label: "Job search", href: "/jobs" },
     { label: "Tailor resume", href: "/tailor" },
+    { label: "Mock interviews", href: "/mock-interview" },
     { label: "History", href: "/history" },
     { label: "My jobs", href: "/jobs/mine" },
   ];
@@ -137,9 +140,22 @@ export default function Nav() {
         {/* ---------- CENTER: NAV LINKS ---------- */}
         <nav className="hidden items-center gap-6 sm:flex">
           {navLinks.map((link) => {
-            const isActive =
-              pathname === link.href ||
-              (link.href === "/" && pathname === "/");
+            // smarter active logic
+            let isActive = pathname === link.href;
+
+            if (link.href === "/") {
+              isActive = pathname === "/";
+            }
+
+            if (link.href === "/jobs") {
+              isActive =
+                pathname?.startsWith("/jobs") &&
+                !pathname?.startsWith("/jobs/mine");
+            }
+
+            if (link.href === "/jobs/mine") {
+              isActive = pathname?.startsWith("/jobs/mine");
+            }
 
             return (
               <button

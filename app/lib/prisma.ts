@@ -14,6 +14,7 @@ function makePrismaClient() {
   });
 }
 
+// 🔒 single Prisma instance (dev + prod)
 export const prisma =
   globalForPrisma.prismaGlobal ?? makePrismaClient();
 

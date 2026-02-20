@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type Role = "user" | "assistant";
 
@@ -10,338 +16,404 @@ type ChatMessage = {
   content: string;
 };
 
-const TOOL_KEYWORDS = [
-  "Python",
-  "SQL",
-  "AWS",
-  "GCP",
-  "Azure",
-  "Snowflake",
-  "Databricks",
-  "Spark",
-  "Kafka",
-  "TensorFlow",
-  "PyTorch",
-  "scikit-learn",
-  "Pandas",
-  "NumPy",
-  "Docker",
-  "Kubernetes",
-  "Airflow",
+const BASE_SUGGESTIONS = [
+  "Summarize this JD in 5 bullet points.",
+  "Extract the top 10 required skills from this JD.",
+  "Tell me where my profile might NOT match this JD.",
 ];
 
+const ADVANCED_SUGGESTIONS = [
+  "Write a short cover email for this JD using my AI/ML profile.",
+  "Generate a tailored resume for this JD using my AI/ML resume profile. Return clean resume text only.",
+  "List 5 talking points I can use in a recruiter screen for this JD.",
+];
+
+const EMOJIS = ["😊", "🔥", "🚀", "💼", "👍", "🤝"];
+
 function looksLikeJD(text: string): boolean {
+  const len = text.trim().length;
+  if (len < 280) return false;
+
+  const lower = text.toLowerCase();
+  const hasBullets =
+    text.includes("•") || text.includes("- ") || text.includes("\n•");
+  const hasKeywords =
+    lower.includes("responsibilit") ||
+    lower.includes("requirements") ||
+    lower.includes("qualification") ||
+    lower.includes("job description") ||
+    lower.includes("role:");
+
+  return hasBullets || hasKeywords;
+}
+
+function jdPreview(text: string, max = 420): string {
   const trimmed = text.trim();
-  if (trimmed.length < 250) return false;
-
-  const lines = trimmed
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  const bulletLines = lines.filter((l) => /^[-•\u2022]/.test(l)).length;
-  const keywordHits = /responsibilit|requirement|qualification|skills|experience|location|duration/i.test(
-    trimmed
-  );
-
-  return bulletLines >= 5 || (lines.length > 8 && keywordHits);
-}
-
-function analyzeJD(jd: string): { bullets: string[]; tools: string[] } {
-  const lines = jd
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  let bullets = lines.filter((l) => /^[-•\u2022]/.test(l));
-  if (bullets.length === 0) {
-    const sentences = jd
-      .split(/(?<=[.!?])\s+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    bullets = sentences;
-  }
-
-  const toolsSet = new Set<string>();
-  for (const kw of TOOL_KEYWORDS) {
-    const re = new RegExp(
-      `\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-      "i"
-    );
-    if (re.test(jd)) toolsSet.add(kw);
-  }
-
-  return { bullets: bullets.slice(0, 8), tools: Array.from(toolsSet) };
-}
-
-function buildJDReply(jd: string): string {
-  const { bullets, tools } = analyzeJD(jd);
-
-  const top3 = bullets.slice(0, 3).map((b) => b.replace(/^[-•\u2022]\s*/, ""));
-  const toolList =
-    tools.length > 0 ? tools.slice(0, 8).join(", ") : "Python, SQL, cloud";
-
-  return [
-    "Nice – this looks like a solid tech JD. Here’s what I’d highlight in your resume:",
-    "",
-    "Top 3 things to show in your bullets:",
-    ...top3.map((b) => `• ${b}`),
-    "",
-    `Tools & stack to push near the top: ${toolList}.`,
-    "",
-    "If you want, ask me: “Give me 3 resume bullets for this JD” or “Write a summary for this role.”",
-  ].join("\n");
-}
-
-function buildFollowupReply(question: string, jd: string): string {
-  const { bullets, tools } = analyzeJD(jd);
-  const top3 = bullets.slice(0, 3).map((b) => b.replace(/^[-•\u2022]\s*/, ""));
-  const toolList =
-    tools.length > 0 ? tools.slice(0, 8).join(", ") : "Python, SQL, cloud";
-
-  if (/summary|overview|profile|about me/i.test(question)) {
-    return [
-      "Here’s a 3-line summary you can drop at the top of your resume:",
-      "",
-      "• Data / AI professional with hands-on experience across modern analytics and ML.",
-      "• Strong in " + toolList + ".",
-      "• Able to turn messy requirements into production-ready solutions that match this JD.",
-    ].join("\n");
-  }
-
-  if (/bullet|bullets|points|highlights|responsibilit/i.test(question)) {
-    return [
-      "Here are 3 tailored resume bullets you can adapt:",
-      "",
-      `• Led end-to-end delivery of features aligned to: ${top3[0] || "key JD responsibilities"}.`,
-      `• Built solutions using ${toolList} to support the role’s main initiatives.`,
-      "• Collaborated with cross-functional teams to ship measurable impact for this role.",
-    ].join("\n");
-  }
-
-  if (/email|cover/i.test(question)) {
-    return [
-      "Here’s a short cover-email you can reuse:",
-      "",
-      "Hi [Recruiter],",
-      "",
-      "I came across your opening and it matches my background in " +
-        toolList +
-        ". I’ve attached a tailored resume that focuses on:",
-      ...top3.slice(0, 2).map((b) => `• ${b}`),
-      "",
-      "Would love to connect and discuss how I can help your team.",
-      "",
-      "Best,\nSrinath",
-    ].join("\n");
-  }
-
-  return [
-    "Got it. Based on the JD you shared earlier, focus your resume on:",
-    "",
-    ...top3.slice(0, 3).map((b) => `• ${b}`),
-    "",
-    `…and make sure ${toolList} live in your summary + skills section.`,
-    "",
-    'You can also ask: “Write bullets for my last project” or “How should I reorder my skills?”.',
-  ].join("\n");
-}
-
-function buildGeneralReply(message: string): string {
-  if (/hi|hello|hey/i.test(message)) {
-    return "Hey! Paste a JD you’ve received and I’ll tell you what to highlight in your resume.";
-  }
-
-  if (/resume|cv|tailor|ats/i.test(message)) {
-    return [
-      "To tailor your resume, paste:",
-      "1) The full JD (or as much as you have).",
-      "2) Optional: a quick note about your current role.",
-      "",
-      "I’ll point out the main skills + 3–5 bullets you should emphasize.",
-    ].join("\n");
-  }
-
-  return [
-    "Nice question. I work best when you paste a JD.",
-    "",
-    "Try one of these:",
-    "• Paste a JD and say: “What should I highlight?”",
-    "• “Write 3 bullets for my experience based on this JD.”",
-    "• “Give me a summary matching this role.”",
-  ].join("\n");
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max) + "…";
 }
 
 export default function AskHirePathChat() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [input, setInput] = useState("");
+  const [chat, setChat] = useState<ChatMessage[]>([
     {
       id: 1,
       role: "assistant",
       content:
-        "Hi! I’m HirePath AI. Paste a job description or ask how to tailor your resume.",
+        "Hi! Paste a job description here and ask me anything — I’ll analyze it and help you tailor your resume, bullets, and emails.",
     },
   ]);
-  const [isSending, setIsSending] = useState(false);
   const [lastJD, setLastJD] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const nextIdRef = useRef(2);
+  // voice + emoji
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-  // Auto-scroll when messages change
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const idRef = useRef(2);
+
+  // Auto-scroll
   useEffect(() => {
-    const el = bodyRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
+    if (!scrollRef.current) return;
+    const el = scrollRef.current;
+    el.scrollTop = el.scrollHeight;
+  }, [chat, loading]);
+
+  // Choose suggestions based on JD presence
+  const suggestionsToShow = useMemo(
+    () =>
+      lastJD ? [...BASE_SUGGESTIONS, ...ADVANCED_SUGGESTIONS] : BASE_SUGGESTIONS,
+    [lastJD]
+  );
+
+  const jdStatusLabel = useMemo(() => {
+    if (!lastJD) return "No JD detected yet";
+    const length = lastJD.length;
+    if (length > 4000) return "Long JD loaded";
+    if (length > 1500) return "Full JD loaded";
+    return "JD snippet loaded";
+  }, [lastJD]);
+
+  async function handleSend(e?: FormEvent) {
+    if (e) e.preventDefault();
+    const text = input.trim();
+    if (!text || loading) return;
+
+    setError(null);
+
+    const userMessage: ChatMessage = {
+      id: idRef.current++,
+      role: "user",
+      content: text,
+    };
+    setChat((prev) => [...prev, userMessage]);
+
+    if (looksLikeJD(text)) {
+      setLastJD(text);
     }
-  }, [messages, isSending]);
 
-  function toggleOpen() {
-    setIsOpen((prev) => !prev);
-  }
+    setInput("");
+    setShowEmojiPicker(false);
+    setLoading(true);
 
-  async function handleSend() {
-    const text = draft.trim();
-    if (!text || isSending) return;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          lastJD,
+          history: chat.slice(-6).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
 
-    const id = nextIdRef.current++;
-    const userMsg: ChatMessage = { id, role: "user", content: text };
+      const data: any = await res.json().catch(() => ({}));
 
-    setMessages((prev) => [...prev, userMsg]);
-    setDraft("");
-    setIsSending(true);
-
-    const jdMode = looksLikeJD(text);
-    const jdSnapshot = lastJD; // capture current JD
-
-    // Fake “typing” delay so the UI feels alive
-    setTimeout(() => {
-      let replyText: string;
-
-      if (jdMode) {
-        setLastJD(text);
-        replyText = buildJDReply(text);
-      } else if (jdSnapshot) {
-        replyText = buildFollowupReply(text, jdSnapshot);
-      } else {
-        replyText = buildGeneralReply(text);
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            "HirePath AI had trouble answering. Try again."
+        );
       }
 
-      const botMsg: ChatMessage = {
-        id: nextIdRef.current++,
+      const replyText: string =
+        data?.reply ||
+        data?.answer ||
+        data?.message ||
+        (typeof data === "string" ? data : JSON.stringify(data, null, 2));
+
+      const assistantMessage: ChatMessage = {
+        id: idRef.current++,
         role: "assistant",
         content: replyText,
       };
 
-      setMessages((prev) => [...prev, botMsg]);
-      setIsSending(false);
-    }, 450);
-  }
+      setChat((prev) => [...prev, assistantMessage]);
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+      if (typeof data?.jd === "string" && data.jd.trim().length > 100) {
+        setLastJD(data.jd);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(
+        err?.message ||
+          "Something went wrong talking to HirePath AI. Please try again."
+      );
+    } finally {
+      setLoading(false);
     }
   }
 
+  function handleSuggestionClick(text: string) {
+    setInput(text);
+    if (lastJD) {
+      setTimeout(() => handleSend(), 10);
+    }
+  }
+
+  // --- Voice recording using SpeechRecognition ---
+  function toggleRecording() {
+    if (isRecording) {
+      // stop
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsRecording(false);
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setError("Voice input isn’t supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      // Append to whatever is already typed
+      setInput((prev) =>
+        prev ? `${prev.trim()} ${transcript.trim()}` : transcript.trim()
+      );
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event);
+      setError("Voice input had a problem. Try again or type instead.");
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+    recognition.start();
+  }
+
+  // --- Emoji helpers ---
+  function handleEmojiClick(emoji: string) {
+    setInput((prev) => (prev ? `${prev}${emoji}` : emoji));
+  }
+
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3">
-      {/* Chat window */}
-      {isOpen && (
-        <div className="flex w-[21rem] flex-col rounded-3xl border border-slate-200 bg-white shadow-xl shadow-sky-100 md:w-[23rem]">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2.5">
-            <div className="flex items-center gap-2">
-              <div className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-sky-600 text-xs font-semibold text-white">
-                H
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-slate-900">
-                  Ask HirePath AI
-                </span>
-                <span className="text-[10px] text-slate-500">
-                  Paste a JD or ask about job search & resumes.
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="rounded-full px-2 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            >
-              ✕
-            </button>
+    <div className="flex h-[520px] w-full max-w-4xl flex-col rounded-3xl bg-white/95 shadow-xl shadow-sky-100 ring-1 ring-sky-100 md:flex-row">
+      {/* Left: Chat */}
+      <div className="flex flex-1 flex-col border-sky-50 md:border-r">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-sky-50 px-4 py-3">
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.16em] text-sky-500">
+              ASK HIREPATH AI
+            </p>
+            <p className="text-sm font-semibold text-sky-950">
+              JD-aware resume assistant
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Paste a job description once, then ask follow-up questions.
+            </p>
           </div>
 
-          {/* Body */}
-          <div
-            ref={bodyRef}
-            className="flex max-h-72 flex-1 flex-col gap-2 overflow-y-auto px-3 py-2 text-[11px]"
-          >
-            {messages.map((m) => (
+          <div className="hidden text-[10px] text-slate-400 md:block">
+            <p>Understands JDs · Remembers context · Writes bullets & emails</p>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div
+          ref={scrollRef}
+          className="flex-1 space-y-3 overflow-y-auto px-3 py-3 text-sm"
+        >
+          {chat.map((m) => (
+            <div
+              key={m.id}
+              className={
+                m.role === "user" ? "flex justify-end" : "flex justify-start"
+              }
+            >
               <div
-                key={m.id}
                 className={
                   m.role === "user"
-                    ? "ml-auto max-w-[85%] rounded-2xl bg-sky-600 px-3 py-1.5 text-[11px] text-white"
-                    : "mr-auto max-w-[90%] rounded-2xl bg-slate-100 px-3 py-1.5 text-[11px] text-slate-900 whitespace-pre-line"
+                    ? "max-w-[80%] rounded-2xl bg-sky-600 px-3 py-2 text-xs text-white shadow-sm"
+                    : "max-w-[80%] rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-800 shadow-sm ring-1 ring-slate-100"
                 }
               >
                 {m.content}
               </div>
-            ))}
-
-            {isSending && (
-              <div className="mr-auto flex items-center gap-1 rounded-2xl bg-slate-100 px-3 py-1.5 text-[10px] text-slate-500">
-                <span className="inline-flex h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
-                <span className="inline-flex h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 delay-75" />
-                <span className="inline-flex h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 delay-150" />
-                <span className="ml-1">HirePath is typing…</span>
-              </div>
-            )}
-          </div>
-
-          {/* Footer / input */}
-          <div className="border-t border-slate-100 px-3 pb-3 pt-2">
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-2">
-              <input
-                type="text"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask about a role or paste a JD…"
-                className="flex-1 border-none bg-transparent py-1.5 text-[11px] text-slate-900 placeholder:text-slate-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={isSending || !draft.trim()}
-                className="inline-flex items-center gap-1 rounded-2xl bg-sky-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-sky-300"
-              >
-                <span>Send</span>
-              </button>
             </div>
-            <p className="mt-1 text-[10px] text-slate-400">
-              Tip: try “Summarize this JD” or “What should I highlight for this
-              role?”.
-            </p>
-          </div>
-        </div>
-      )}
+          ))}
 
-      {/* Bubble */}
-      <button
-        type="button"
-        onClick={toggleOpen}
-        className="inline-flex items-center gap-2 rounded-full bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-sky-300 hover:bg-sky-700"
-      >
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-[11px]">
-          💬
-        </span>
-        <span>Ask HirePath AI</span>
-      </button>
+          {loading && (
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <span className="inline-flex h-6 items-center rounded-full bg-slate-50 px-3 ring-1 ring-slate-100">
+                <span className="mr-2 text-[10px] font-semibold text-sky-600">
+                  HirePath
+                </span>
+                <span className="flex gap-1">
+                  <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.2s]" />
+                  <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.1s]" />
+                  <span className="h-1 w-1 animate-bounce rounded-full bg-slate-400" />
+                </span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <form
+          onSubmit={handleSend}
+          className="border-t border-sky-50 bg-slate-50/60 px-3 py-3"
+        >
+          {error && (
+            <div className="mb-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+              {error}
+            </div>
+          )}
+
+          {/* Suggestions row */}
+          <div className="mb-2 flex flex-wrap gap-2">
+            {suggestionsToShow.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => handleSuggestionClick(s)}
+                className="rounded-full border border-sky-100 bg-white px-3 py-1 text-[10px] text-sky-700 shadow-sm hover:border-sky-300 hover:bg-sky-50"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-end gap-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                lastJD
+                  ? "Ask a follow-up about this JD, your resume, bullets, or emails…"
+                  : "Paste a full job description here (or ask a quick question)…"
+              }
+              rows={2}
+              className="max-h-24 flex-1 resize-none rounded-2xl border border-sky-100 bg-white px-3 py-2 text-xs text-slate-900 placeholder-slate-300 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-200"
+            />
+
+            {/* Emoji + mic */}
+            <div className="relative mb-0.5 flex flex-col items-center gap-1">
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowEmojiPicker((prev) => !prev)
+                  }
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-lg shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  😊
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full bg-white text-[15px] shadow-sm ring-1 ring-slate-200 hover:bg-slate-50 ${
+                    isRecording ? "ring-2 ring-rose-400 bg-rose-50" : ""
+                  }`}
+                >
+                  {isRecording ? "■" : "🎙"}
+                </button>
+              </div>
+
+              {showEmojiPicker && (
+                <div className="absolute bottom-10 right-0 flex gap-1 rounded-2xl bg-white px-2 py-1 text-lg shadow-md ring-1 ring-slate-200">
+                  {EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => handleEmojiClick(emoji)}
+                      className="hover:scale-110 transition-transform"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="mb-0.5 inline-flex h-9 items-center justify-center rounded-2xl bg-sky-600 px-4 text-xs font-semibold text-white shadow-sm shadow-sky-300 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {loading ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* Right: Active JD panel */}
+      <div className="hidden w-64 flex-col border-l border-sky-50 bg-slate-50/80 px-3 py-3 text-xs text-slate-700 md:flex">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-500">
+          ACTIVE JD
+        </p>
+        <p className="mt-0.5 text-[11px] text-slate-500">
+          I’ll use this JD for follow-up questions and tailoring.
+        </p>
+
+        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[10px] text-sky-700 shadow-sm ring-1 ring-sky-100">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          {lastJD ? jdStatusLabel : "Paste a JD to get started"}
+        </div>
+
+        <div className="mt-3 flex-1 overflow-y-auto rounded-2xl bg-white px-3 py-2 text-[11px] leading-relaxed shadow-sm ring-1 ring-slate-100">
+          {lastJD ? (
+            <pre className="whitespace-pre-wrap text-[11px] text-slate-800">
+              {jdPreview(lastJD)}
+            </pre>
+          ) : (
+            <p className="text-[11px] text-slate-400">
+              When you paste a long job description, it will show up here so you
+              can keep asking questions without re-pasting.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
