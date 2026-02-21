@@ -2,12 +2,26 @@ import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+
     const job = await prisma.job.findUnique({
-      where: { id: params.id },
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        company: true,
+        location: true,
+        jobType: true,
+        workMode: true,
+        salaryRange: true,
+        description: true,
+        tags: true,
+        createdAt: true,
+      },
     });
 
     if (!job) {
@@ -15,10 +29,7 @@ export async function GET(
     }
 
     return NextResponse.json(job);
-  } catch (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch job" },
-      { status: 500 }
-    );
+  } catch (e) {
+    return NextResponse.json({ error: "Failed to fetch job" }, { status: 500 });
   }
 }
